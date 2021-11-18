@@ -6,14 +6,12 @@
 
 
 // Prototypes definitions
-static enum Error_t FileExists(char* fileName);
-static enum Error_t GetFileNameFromUser(char* fileName);
-static enum Error_t CrcComputationProcess(char* fileName, uint32_t *crcValue);
-static uint32_t ComputeCrc(char* fileName, struct Crc_t* crc);
-static enum Error_t CreateCrcTable(struct Crc_t* crc);
+static Error_t FileExists(char* fileName);
+static Error_t GetFileNameFromUser(char* fileName);
+static Error_t CrcComputationProcess(char* fileName, uint64_t *crcValue, Crc_t* crc);
+static uint64_t ComputeCrc(char* fileName, void* crcTable, Crc_t* crc);
+static Error_t CreateCrcTable(Crc_t* crc, void** crcTable);
 static void DeleteCrcTable(void *table);
-
-
 
 
 
@@ -24,7 +22,7 @@ int main(int argc, char **argv)
 
     printf("*** C CRC Program ***\r\n");
 
-    if(argc < 2)
+    if(argc < 2) // TODO support 3rd argument for CRC selection
     {
         // Ask user to enter a filename
         if(GetFileNameFromUser(fileName) != Success)
@@ -51,24 +49,22 @@ int main(int argc, char **argv)
         return 0;
     }
 
-
-
     // Copute CRC
-    uint32_t crcResult;
-    if(CrcComputationProcess(pFile, &crcResult) != Success)
+    uint64_t crcResult;
+    if(CrcComputationProcess(pFile, &crcResult, selectedCrc) != Success)
     {
         printf("Error computing the CRC value.\r\n");
         return 0;
     }
 
-    printf("CRC = %d\r\n", crcResult);
+    printf("CRC = %llX\r\n", crcResult);
 
     return -1;
 }
 
 
 
-static enum Error_t GetFileNameFromUser(char* fileName)
+static Error_t GetFileNameFromUser(char* fileName)
 {
     // do
     // {
@@ -97,7 +93,7 @@ static enum Error_t GetFileNameFromUser(char* fileName)
 }
 
 
-static enum Error_t FileExists(char* fileName)
+static Error_t FileExists(char* fileName)
 {
     FILE *file;
 
@@ -124,36 +120,36 @@ static enum Error_t FileExists(char* fileName)
 }
 
 
-static enum Error_t CrcComputationProcess(char* fileName, uint32_t *crcValue)
+static Error_t CrcComputationProcess(char* fileName, uint64_t *crcValue, Crc_t* crc)
 {
     if(fileName == NULL)
         return Failure;
 
-    // Create CRC32 table
-    struct Crc_t crc = {
-        .crcBitSize = 32, 
-        .polynomial = CRC32_POLINOMIAL,
-        .initialValue = 0};
+    if((crc->crcBitSize < 8) || (crc->crcBitSize > 64))
+        return Failure;
 
-    if(CreateCrcTable(&crc) != Success)
+
+    void* crcTable;
+
+    if(CreateCrcTable(crc, &crcTable) != Success)
     {
         return Failure;
     }
 
     // Calculate CRC value
-    *crcValue = ComputeCrc(fileName, &crc);
+    *crcValue = ComputeCrc(fileName, crcTable, crc);
 
     // Delete CRC table from memory
-    DeleteCrcTable((void*)crc.crcTable);
+    DeleteCrcTable((void*)crcTable);
 
     return Success;
 }
 
 
-static uint32_t ComputeCrc(char* fileName, struct Crc_t* crc)
+static uint64_t ComputeCrc(char* fileName, void* crcTable, Crc_t* crc)
 {
-    uint32_t crcValue = 0;
-    uint32_t* crcTable = (uint32_t*)crc->crcTable;
+    uint64_t crcValue = 0;
+    uint64_t* table = (uint64_t*)crcTable;
     FILE *file;
 
     file = fopen(fileName, "r");
@@ -166,6 +162,17 @@ static uint32_t ComputeCrc(char* fileName, struct Crc_t* crc)
         return crcValue;
     }
 
+
+    uint64_t sizeMask = 0;
+    for(uint8_t bitCount = 0; bitCount < crc->crcBitSize; bitCount++)
+    {
+        sizeMask = sizeMask << 1;
+        sizeMask |= 1;
+    }
+
+    uint8_t shift = crc->crcBitSize - 8;
+    uint64_t bytesComputed = 0;
+
     while(1)
     {
         // Detect the end of file
@@ -176,45 +183,66 @@ static uint32_t ComputeCrc(char* fileName, struct Crc_t* crc)
 
         uint8_t byte = fgetc(file);
 
+        #ifdef DISPLAY_DEBUG_OUTPUT
+            printf("BYTE[%llX] = %u\r\n", bytesComputed, byte);
+        #endif // DISPLAY_DEBUG_OUTPUT
+
         // Calculate byte CRC
         /* XOR-in next input byte into MSB of crc and get this MSB, that's our new intermediate divident */
-        uint8_t pos = (uint8_t)((crcValue ^ (byte << 24)) >> 24);
+        uint8_t position = (uint8_t)((crcValue ^ (byte << shift)) >> shift);
         /* Shift out the MSB used for division per lookuptable and XOR with the remainder */
-        crcValue = (uint32_t)((crcValue << 8) ^ (uint32_t)(crcTable[pos]));
+        crcValue = (uint64_t)((crcValue << 8) ^ (uint64_t)(table[position]));
+        crcValue &= sizeMask;
+
+        bytesComputed++;
     }
 
     fclose(file);
+
+    #ifdef DISPLAY_DEBUG_OUTPUT
+        printf("CRC value=%llX computed over %llu bytes\r\n", crcValue, bytesComputed);
+    #endif // DISPLAY_DEBUG_OUTPUT
 
     return crcValue;
 }
 
 
 
-static enum Error_t CreateCrcTable(struct Crc_t* crc)
+static Error_t CreateCrcTable(Crc_t* crc, void** crcTable)
 {
-    uint32_t polynomial = crc->polynomial;
+    uint64_t polynomial = crc->polynomial;
 
     // Get space for table. Table has 256 entries of width "CRC bit size"
-    crc->crcTable = malloc(256 * (crc->crcBitSize / 8));
+    *crcTable = malloc(256 * sizeof(uint64_t));//(crc->crcBitSize / 8));
 
-    if(crc->crcTable == NULL)
+    // Abort if malloc fails to allocate memory
+    if(*crcTable == NULL)
         return Failure;
         
+    // TODO: Make bitsize flexible insted of fixed 32bit
+    uint64_t* table = (uint64_t*)*crcTable;
+
+    uint64_t sizeMask = 0;
+    for(uint8_t bitCount = 0; bitCount < crc->crcBitSize; bitCount++)
+    {
+        sizeMask = sizeMask << 1;
+        sizeMask |= 1;
+    }
+
     #ifdef DISPLAY_DEBUG_OUTPUT
-        printf("<CRC TABLE>>\r\n");
-        printf("CRC Table Initialization with Polynomial=0x%X and initial value=0x%X\r\n", crc->polynomial, crc->initialValue);
+        printf("<CRC TABLE>\r\n");
+        printf("CRC Table Initialization with Polynomial=0x%llX and initial value=0x%llX\r\n", crc->polynomial, crc->initialValue);
+        printf("CRC size=0x%X and mask=0x%llX\r\n", crc->crcBitSize, sizeMask);
     #endif // DISPLAY_DEBUG_OUTPUT
 
-    // TODO: Make bitsize flexible insted of fixed 32bit
-    uint32_t* table = crc->crcTable;
-
     // Go through all 256 Bytes of the table
-    for (uint32_t divident = 0; divident < 256; divident++)
+    for (uint64_t divident = 0; divident < 256; divident++)
     {
-        uint32_t remainder = (uint32_t)(divident << 24); /* move divident byte into MSB of 32Bit CRC */
+        uint64_t remainder = (uint64_t)(divident << (crc->crcBitSize - 8)); /* move divident byte into MSB of CRC */
         for (uint8_t bit = 0; bit < 8; bit++)
         {
-            if ((remainder & 0x80000000) != 0)
+            // Check if the MSB is non-zero
+            if ((remainder & (1U << (crc->crcBitSize - 1))) != 0)
             {
                 remainder <<= 1;
                 remainder ^= polynomial;
@@ -225,32 +253,12 @@ static enum Error_t CreateCrcTable(struct Crc_t* crc)
             }
         }
 
-        table[divident] = remainder;
+        table[divident] = remainder & sizeMask;
     
         #ifdef DISPLAY_DEBUG_OUTPUT
-            printf(" CRC[%u] = %X\r\n", divident, remainder);
+            printf(" CRC[%u] = %llX\r\n", divident, table[divident]);
         #endif // DISPLAY_DEBUG_OUTPUT
     }
-
-    // uint32_t remainder;
-    // uint8_t byte = 0;
-    // do {
-    //     // Start with the data byte
-    //     remainder = byte;
-    //     for (uint32_t bit = 8; bit > 0; --bit)
-    //     {
-    //         if (remainder & 1)
-    //             remainder = (remainder >> 1) ^ polynomial;
-    //         else
-    //             remainder = (remainder >> 1);
-    //     }
-
-    //     table[(size_t)byte] = remainder;
-
-    //     #ifdef DISPLAY_DEBUG_OUTPUT
-    //         printf(" CRC[%u] = %X\r\n", byte, remainder);
-    //     #endif // DISPLAY_DEBUG_OUTPUT
-    // } while(++byte != 0);
 
     #ifdef DISPLAY_DEBUG_OUTPUT
         printf("</CRC TABLE>>\r\n");
