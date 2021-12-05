@@ -49,7 +49,7 @@ Crc_t crc32 = {
     .crcBitSize = 32, 
     .polynomial = 0x04C11DB7,
     .initialValue = 0xFFFFFFFF,
-    .finalXor = 0x00000000};
+    .finalXor = 0xFFFFFFFF};
 
 
 // CRC64 table
@@ -59,7 +59,7 @@ Crc_t crc64 = {
     .initialValue = 0x0000000000000000,
     .finalXor = 0x0000000000000000};
 
-static Crc_t* selectedCrc = &crc8;
+static Crc_t* selectedCrc = &crc32;
 
 
 #endif // _C_CRC_H_

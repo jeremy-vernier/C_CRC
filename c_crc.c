@@ -12,42 +12,56 @@ static Error_t CrcComputationProcess(char* fileName, uint64_t *crcValue, Crc_t* 
 static uint64_t ComputeCrc(char* fileName, void* crcTable, Crc_t* crc);
 static Error_t CreateCrcTable(Crc_t* crc, void** crcTable);
 static void DeleteCrcTable(void *table);
-
+static Error_t GetCrcConfigFromUser(Crc_t** crc);
+static Error_t ValidateCrcConfigInput(uint8_t value, Crc_t** crc);
 
 
 int main(int argc, char **argv)
 {
     char fileName[MAX_FILENAME_LENGTH];
     char *pFile = NULL;
+    Crc_t *selectedCrc;
 
-    printf("*** C CRC Program ***\r\n");
-
-    if(argc < 2) // TODO support 3rd argument for CRC selection
+    // At least 1 argument provided, Argument 1 used for filename parameter
+    if(argc >= 2)
     {
-        // Ask user to enter a filename
-        if(GetFileNameFromUser(fileName) != Success)
-        {
-            printf("No valid file provided by user\r\n");
-            return 0;
-        } 
-
-        pFile = fileName;
-    }
-    else if(argc == 2)
-    {
-        if(FileExists(argv[1]) != Success)
-        {
-            printf("No valid file provided as argument\r\n");
-            return 0;
-        } 
-
         pFile = argv[1];
     }
     else
     {
-        printf("Too many arguments provided\r\n");
-        return 0;
+        // Ask user to select a file if no file was provided as argument
+        pFile = fileName;
+        GetFileNameFromUser(pFile);
     }
+
+    // Validate filename
+    if(FileExists(pFile) != Success)
+    {
+        printf("File name not valid\r\n");
+            return 0;
+    } 
+
+    // At least 2 argument provided, Argument 2 used for CRC type parameter
+    if(argc >= 3)
+    {
+        // Validate provided Crc config
+        int crcArg = atoi(argv[2]);
+        if(ValidateCrcConfigInput((uint8_t)crcArg, &selectedCrc) != Success)
+        {
+            printf("Specified Crc config not valid\r\n");
+            return 0;
+        }
+    }
+    else
+    {
+        // Ask user to enter a CRC configuration
+        if(GetCrcConfigFromUser(&selectedCrc) != Success)
+        {
+            printf("No valid Crc config provided by user\r\n");
+            return 0;
+        }
+    }
+
 
     // Copute CRC
     uint64_t crcResult;
@@ -57,7 +71,7 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    printf("CRC = %llX\r\n", crcResult);
+    printf("CRC = 0x%llX\r\n", crcResult);
 
     return -1;
 }
@@ -66,28 +80,32 @@ int main(int argc, char **argv)
 
 static Error_t GetFileNameFromUser(char* fileName)
 {
-    // do
-    // {
-        printf("Enter filename: ");
-        if(fgets(fileName, MAX_FILENAME_LENGTH, stdin) != NULL)
+    printf("Enter filename: ");
+    if(fgets(fileName, MAX_FILENAME_LENGTH, stdin) != NULL)
+    {
+        int length = strlen(fileName);
+        if(length < 0)
         {
-            int length = strlen(fileName);
-            if(length < 0)
-            {
-                return Failure;
-            }
-
-            // Remove newline feed captured by fgets()
-            if((fileName[length - 1] == '\n') || (fileName[length - 1] == '\r'))
-            {
-                fileName[length - 1] == 0;
-            }
-
-            if(FileExists(fileName) == Success)
-                return Success;
+            printf("Filename length error\r\n");
+            return Failure;
         }
 
-    // } while (FileExists() != SUCCESS);
+        // Remove newline feed captured by fgets()
+        if((fileName[length - 1] == '\n') || (fileName[length - 1] == '\r'))
+        {
+            fileName[length - 1] = 0;
+        }
+
+        // printf("name length: %d\r\n", length);
+
+        // for(int charCnt = 0; charCnt < length; charCnt++)
+        // {
+        //     printf("[%d] = 0x%X\r\n", charCnt, fileName[charCnt]);
+        // }
+
+        // if(FileExists(fileName) == Success)
+        return Success;
+    }
     
     return Failure;
 }
@@ -120,6 +138,52 @@ static Error_t FileExists(char* fileName)
 }
 
 
+static Error_t GetCrcConfigFromUser(Crc_t** crc)
+{
+    printf("Enter Crc size (8/16/32/64): ");
+    uint8_t userSelection;
+    if(scanf("%u", &userSelection) != 1)
+    {
+        printf("crc size input is not a valid number\r\n");
+    }
+        
+    return ValidateCrcConfigInput(userSelection, crc);
+}
+
+
+static Error_t ValidateCrcConfigInput(uint8_t value, Crc_t** crc)
+{
+    switch(value)
+    {
+        case 8:
+            *crc = &crc8;
+            printf("Selected CRC8\r\n");
+            break;
+
+        case 16:
+            *crc = &crc16;
+            printf("Selected CRC16\r\n");
+            break;
+
+        case 32:
+            *crc = &crc32;
+            printf("Selected CRC32\r\n");
+            break;
+
+        case 64:
+            *crc = &crc64;
+            printf("Selected CRC64\r\n");
+            break;
+
+        default:
+            printf("Incorrect crc size input\r\n");
+            return Failure;
+    }
+        
+    return Success;
+}
+
+
 static Error_t CrcComputationProcess(char* fileName, uint64_t *crcValue, Crc_t* crc)
 {
     if(fileName == NULL)
@@ -128,8 +192,11 @@ static Error_t CrcComputationProcess(char* fileName, uint64_t *crcValue, Crc_t* 
     if((crc->crcBitSize < 8) || (crc->crcBitSize > 64))
         return Failure;
 
-
     void* crcTable;
+
+    #ifdef DISPLAY_DEBUG_OUTPUT
+        printf("CRC computation process\r\n");
+    #endif // DISPLAY_DEBUG_OUTPUT
 
     if(CreateCrcTable(crc, &crcTable) != Success)
     {
@@ -175,16 +242,17 @@ static uint64_t ComputeCrc(char* fileName, void* crcTable, Crc_t* crc)
 
     while(1)
     {
+        // Read one byte from the file
+        uint8_t byte = fgetc(file);
+
         // Detect the end of file
         if(feof(file))
         {
             break;
         }
 
-        uint8_t byte = fgetc(file);
-
         #ifdef DISPLAY_DEBUG_OUTPUT
-            printf("BYTE[%llX] = %u\r\n", bytesComputed, byte);
+            printf("BYTE[%llu] = 0x%X\r\n", bytesComputed, byte);
         #endif // DISPLAY_DEBUG_OUTPUT
 
         // Calculate byte CRC
@@ -199,8 +267,12 @@ static uint64_t ComputeCrc(char* fileName, void* crcTable, Crc_t* crc)
 
     fclose(file);
 
+    // Apply final XOR
+    crcValue = crcValue ^ crc->finalXor;
+    crcValue &= sizeMask;
+
     #ifdef DISPLAY_DEBUG_OUTPUT
-        printf("CRC value=%llX computed over %llu bytes\r\n", crcValue, bytesComputed);
+        printf("CRC value=0x%llX computed over %llu bytes\r\n", crcValue, bytesComputed);
     #endif // DISPLAY_DEBUG_OUTPUT
 
     return crcValue;

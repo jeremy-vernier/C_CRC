@@ -1,0 +1,275 @@
+	.file	"c_crc.c"
+	.text
+	.def	__main;	.scl	2;	.type	32;	.endef
+	.section .rdata,"dr"
+.LC0:
+	.ascii "*** C CRC Program ***\15\0"
+	.align 8
+.LC1:
+	.ascii "No valid file provided by user\15\0"
+	.align 8
+.LC2:
+	.ascii "No valid file provided as argument\15\0"
+.LC3:
+	.ascii "Too many arguments provided\15\0"
+.LC4:
+	.ascii "r\0"
+.LC5:
+	.ascii "File '%s' open\15\12\0"
+.LC6:
+	.ascii "File could not be open\15\0"
+	.text
+	.globl	main
+	.def	main;	.scl	2;	.type	32;	.endef
+	.seh_proc	main
+main:
+	pushq	%rbp
+	.seh_pushreg	%rbp
+	subq	$304, %rsp
+	.seh_stackalloc	304
+	leaq	128(%rsp), %rbp
+	.seh_setframe	%rbp, 128
+	.seh_endprologue
+	movl	%ecx, 192(%rbp)
+	movq	%rdx, 200(%rbp)
+	call	__main
+	leaq	.LC0(%rip), %rcx
+	call	puts
+	cmpl	$1, 192(%rbp)
+	jg	.L2
+	leaq	-96(%rbp), %rax
+	movq	%rax, %rcx
+	call	GetFileNameFromUser
+	testb	%al, %al
+	je	.L3
+	leaq	.LC1(%rip), %rcx
+	call	puts
+	movl	$0, %eax
+	jmp	.L9
+.L2:
+	cmpl	$2, 192(%rbp)
+	jne	.L5
+	movq	200(%rbp), %rax
+	addq	$8, %rax
+	movq	(%rax), %rax
+	movq	%rax, %rcx
+	call	FileExists
+	testb	%al, %al
+	je	.L3
+	leaq	.LC2(%rip), %rcx
+	call	puts
+	movl	$0, %eax
+	jmp	.L9
+.L5:
+	leaq	.LC3(%rip), %rcx
+	call	puts
+	movl	$0, %eax
+	jmp	.L9
+.L3:
+	movq	200(%rbp), %rax
+	addq	$8, %rax
+	movq	(%rax), %rax
+	leaq	.LC4(%rip), %rdx
+	movq	%rax, %rcx
+	call	fopen
+	movq	%rax, 168(%rbp)
+	movq	200(%rbp), %rax
+	addq	$8, %rax
+	movq	(%rax), %rax
+	movq	%rax, %rdx
+	leaq	.LC5(%rip), %rcx
+	call	printf
+	cmpq	$0, 168(%rbp)
+	jne	.L6
+	leaq	.LC6(%rip), %rcx
+	call	puts
+	movl	$1, %eax
+	jmp	.L9
+.L6:
+	movq	168(%rbp), %rax
+	movq	%rax, %rcx
+	call	feof
+	testl	%eax, %eax
+	jne	.L11
+	movq	168(%rbp), %rax
+	movq	%rax, %rcx
+	call	fgetc
+	movb	%al, 167(%rbp)
+	movsbl	167(%rbp), %eax
+	movl	%eax, %ecx
+	call	putchar
+	jmp	.L6
+.L11:
+	nop
+	movq	168(%rbp), %rax
+	movq	%rax, %rcx
+	call	fclose
+	movl	$-1, %eax
+.L9:
+	addq	$304, %rsp
+	popq	%rbp
+	ret
+	.seh_endproc
+	.section .rdata,"dr"
+.LC7:
+	.ascii "Enter filename: \0"
+	.text
+	.def	GetFileNameFromUser;	.scl	3;	.type	32;	.endef
+	.seh_proc	GetFileNameFromUser
+GetFileNameFromUser:
+	pushq	%rbp
+	.seh_pushreg	%rbp
+	movq	%rsp, %rbp
+	.seh_setframe	%rbp, 0
+	subq	$32, %rsp
+	.seh_stackalloc	32
+	.seh_endprologue
+	movq	%rcx, 16(%rbp)
+	leaq	.LC7(%rip), %rcx
+	call	printf
+	movl	$0, %ecx
+	movq	__imp___acrt_iob_func(%rip), %rax
+	call	*%rax
+	movq	%rax, %r8
+	movl	$256, %edx
+	movq	16(%rbp), %rcx
+	call	fgets
+	testq	%rax, %rax
+	je	.L13
+	movq	16(%rbp), %rcx
+	call	FileExists
+	testb	%al, %al
+	jne	.L13
+	movl	$0, %eax
+	jmp	.L14
+.L13:
+	movl	$1, %eax
+.L14:
+	addq	$32, %rsp
+	popq	%rbp
+	ret
+	.seh_endproc
+	.section .rdata,"dr"
+.LC8:
+	.ascii "File name too long.\15\0"
+.LC9:
+	.ascii "Opening File '%s' \15\12\0"
+	.text
+	.def	FileExists;	.scl	3;	.type	32;	.endef
+	.seh_proc	FileExists
+FileExists:
+	pushq	%rbp
+	.seh_pushreg	%rbp
+	movq	%rsp, %rbp
+	.seh_setframe	%rbp, 0
+	subq	$48, %rsp
+	.seh_stackalloc	48
+	.seh_endprologue
+	movq	%rcx, 16(%rbp)
+	movq	16(%rbp), %rcx
+	call	strlen
+	cmpq	$256, %rax
+	jbe	.L16
+	leaq	.LC8(%rip), %rcx
+	call	puts
+	movl	$1, %eax
+	jmp	.L17
+.L16:
+	leaq	.LC4(%rip), %rdx
+	movq	16(%rbp), %rcx
+	call	fopen
+	movq	%rax, -8(%rbp)
+	movq	16(%rbp), %rdx
+	leaq	.LC9(%rip), %rcx
+	call	printf
+	cmpq	$0, -8(%rbp)
+	jne	.L18
+	leaq	.LC6(%rip), %rcx
+	call	puts
+	movl	$1, %eax
+	jmp	.L17
+.L18:
+	movq	-8(%rbp), %rax
+	movq	%rax, %rcx
+	call	fclose
+	movl	$0, %eax
+.L17:
+	addq	$48, %rsp
+	popq	%rbp
+	ret
+	.seh_endproc
+	.section .rdata,"dr"
+	.align 4
+CRC_TABLE_SIZE:
+	.long	256
+	.text
+	.def	CreateCrcTable;	.scl	3;	.type	32;	.endef
+	.seh_proc	CreateCrcTable
+CreateCrcTable:
+	pushq	%rbp
+	.seh_pushreg	%rbp
+	movq	%rsp, %rbp
+	.seh_setframe	%rbp, 0
+	subq	$64, %rsp
+	.seh_stackalloc	64
+	.seh_endprologue
+	movl	%ecx, 16(%rbp)
+	movl	$256, %eax
+	sall	$8, %eax
+	cltq
+	movq	%rax, %rcx
+	call	malloc
+	movq	%rax, -24(%rbp)
+	cmpq	$0, -24(%rbp)
+	jne	.L20
+	movl	$0, %eax
+	jmp	.L19
+.L20:
+	movb	$0, -5(%rbp)
+.L26:
+	movzbl	-5(%rbp), %eax
+	movl	%eax, -4(%rbp)
+	movl	$8, -12(%rbp)
+	jmp	.L22
+.L25:
+	movl	-4(%rbp), %eax
+	andl	$1, %eax
+	testl	%eax, %eax
+	je	.L23
+	movl	-4(%rbp), %eax
+	shrl	%eax
+	xorl	16(%rbp), %eax
+	movl	%eax, -4(%rbp)
+	jmp	.L24
+.L23:
+	shrl	-4(%rbp)
+.L24:
+	subl	$1, -12(%rbp)
+.L22:
+	cmpl	$0, -12(%rbp)
+	jne	.L25
+	movzbl	-5(%rbp), %eax
+	leaq	0(,%rax,4), %rdx
+	movq	-24(%rbp), %rax
+	addq	%rdx, %rax
+	movl	-4(%rbp), %edx
+	movl	%edx, (%rax)
+	addb	$1, -5(%rbp)
+	cmpb	$0, -5(%rbp)
+	jne	.L26
+.L19:
+	addq	$64, %rsp
+	popq	%rbp
+	ret
+	.seh_endproc
+	.ident	"GCC: (x86_64-posix-seh-rev0, Built by MinGW-W64 project) 8.1.0"
+	.def	puts;	.scl	2;	.type	32;	.endef
+	.def	fopen;	.scl	2;	.type	32;	.endef
+	.def	printf;	.scl	2;	.type	32;	.endef
+	.def	feof;	.scl	2;	.type	32;	.endef
+	.def	fgetc;	.scl	2;	.type	32;	.endef
+	.def	putchar;	.scl	2;	.type	32;	.endef
+	.def	fclose;	.scl	2;	.type	32;	.endef
+	.def	fgets;	.scl	2;	.type	32;	.endef
+	.def	strlen;	.scl	2;	.type	32;	.endef
+	.def	malloc;	.scl	2;	.type	32;	.endef
